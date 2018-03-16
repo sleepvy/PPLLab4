@@ -125,27 +125,49 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         case (tgot,_) => err(tgot,e1) //if it didn't match the above cases, there was an error
 
       }
-      case Binary(Minus|Times|Div, e1, e2) => 
-        ???
-      case Binary(Eq|Ne, e1, e2) =>
-        ???
-      case Binary(Lt|Le|Gt|Ge, e1, e2) =>
-        ???
-      case Binary(And|Or, e1, e2) =>
-        ???
-      case Binary(Seq, e1, e2) =>
-        ???
-      case If(e1, e2, e3) =>
-        ???
+      case Binary(Minus|Times|Div, e1, e2) => (typeof(env, e1), typeof(env, e2)) match { //typeArith
+        case (TNumber, TNumber) => TNumber
+        case (tgot, _ ) => err(tgot, e1)
+      }
+
+      case Binary(Eq|Ne, e1, e2) => (typeof(env, e1), typeof(env, e2)) match { //typeequality
+        case (t, t2) if (!hasFunctionTyp(t) && !hasFunctionTyp(t2)) => TBool //if they're both not functions
+          //What if one/both of them is a function?
+      }
+        case Binary(Lt|Le|Gt|Ge, e1, e2) => (typeof(env, e1), typeof(env, e2)) match { //typeinequality
+          case (TNumber, TNumber) => TBool
+          case (TString, TString) => TBool
+          case (tgot, _) => err(tgot, e1)
+        }
+          case Binary(And|Or, e1, e2) =>  (typeof(env, e1), typeof(env, e2)) match { //typandor
+            case (TBool, TBool) => TBool
+            case (tgot, _) => err(tgot, e1)
+          }
+      case Binary(Seq, e1, e2) => {
+        typeof(env, e1)
+        typeof(env, e2)
+      }
+      case If(e1, e2, e3) => typeof(env, e1) match {
+        case TBool => if (typeof(env, e2) == typeof(env, e3)) typeof(env, e3) else err(typeof(env, e2), e1) //or should the error be thrown for e2/e3?
+        case tgot => err(tgot, e1)
+      }
       case Function(p, params, tann, e1) => {
         // Bind to env1 an environment that extends env with an appropriate binding if
         // the function is potentially recursive.
         val env1 = (p, tann) match {
           /***** Add cases here *****/
+          case (None, _) => env
+          case (Some(functionname), Some(returntype)) => { //potentially recursive
+            val tprime = TFunction(params, returntype)
+            extend(env, functionname, tprime)
+          }
           case _ => err(TUndefined, e1)
         }
         // Bind to env2 an environment that extends env1 with bindings for params.
-        val env2 = ???
+        val env2 = params.foldLeft(env1){
+          //use case for binding
+          case (acc, (param1, type1)) => acc + (param1 -> type1) //acc is environment, add bindings to it
+        }
         // Infer the type of the function body
         val t1 = ???
         // Check with the possibly annotated return type
