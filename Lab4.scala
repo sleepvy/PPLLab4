@@ -155,7 +155,9 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         // Bind to env1 an environment that extends env with an appropriate binding if
         // the function is potentially recursive.
         val env1 = (p, tann) match {
-          /***** Add cases here *****/
+            //map function name to type annotation.
+            //if there's no function name, we don't need to extend env
+
           case (None, _) => env
           case (Some(functionname), Some(returntype)) => { //potentially recursive
             val tprime = TFunction(params, returntype)
@@ -165,18 +167,24 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         }
         // Bind to env2 an environment that extends env1 with bindings for params.
         val env2 = params.foldLeft(env1){
-          //use case for binding
-          case (acc, (param1, type1)) => acc + (param1 -> type1) //acc is environment, add bindings to it
+          case (env1, (s: String, MTyp(_,t))) => extend(env1, s, t)
         }
+
         // Infer the type of the function body
-        val t1 = ???
+        //check page 58 of notes
+        //"The return type τ′ is obtained by inferring the type of the body expression e under the extended environment Γ[ x  → τ]."
+        val t1 = typeof(env2, e1)
+
         // Check with the possibly annotated return type
-        ???
+        tann match{
+          case None => TFunction(params, t1)
+          case Some(tann1) => if (tann1 == t1) TFunction(params, t1) else err(t1, e1)
+        }
       }
       case Call(e1, args) => typeof(env, e1) match {
         case TFunction(params, tret) if (params.length == args.length) =>
           (params zip args).foreach {
-            ???
+          ???
           };
           tret
         case tgot => err(tgot, e1)
@@ -219,11 +227,12 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       case N(_) | B(_) | Undefined | S(_) => e
       case Print(e1) => Print(substitute(e1, esub, x))
         /***** Cases from Lab 3 */
-      case Unary(uop, e1) => ???
-      case Binary(bop, e1, e2) => ???
-      case If(e1, e2, e3) => ???
-      case Var(y) => ???
-      case Decl(mode, y, e1, e2) => ???
+      case Unary(uop, e1) => Unary(uop, substitute(e1, esub, x))
+      case Binary(bop, e1, e2) => Binary(bop, substitute(e1, esub, x), substitute(e2, esub, x))
+      case If(e1, e2, e3) => If(substitute(e1, esub, x), substitute(e2, esub, x), substitute(e3, esub, x))
+      case Var(y) => if (x == y) esub else Var(y)
+      case Decl(mode, y, e1, e2) => {if (x == y) e else Decl(mode, y, substitute(e1, esub, x), substitute(e2, esub, x))
+    }
         /***** Cases needing adapting from Lab 3 */
       case Function(p, params, tann, e1) =>
         ???
