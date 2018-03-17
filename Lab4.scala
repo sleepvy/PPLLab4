@@ -61,7 +61,7 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
 
   def foldLeft[A](t: Tree)(z: A)(f: (A, Int) => A): A = { //z is initial value
     def loop(acc: A, t: Tree): A = t match {
-      case Empty => acc //if empty tree
+      case Empty => acc //if empty
       case Node(l, d, r) => loop(loop(f(acc,d),l),r) //otherwise loop through and apply f to values in left and right subtrees
     }
     loop(z, t)
@@ -133,6 +133,7 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       case Binary(Eq|Ne, e1, e2) => (typeof(env, e1), typeof(env, e2)) match { //typeequality
         case (t, t2) if (!hasFunctionTyp(t) && !hasFunctionTyp(t2)) => TBool //if they're both not functions
           //What if one/both of them is a function?
+
       }
         case Binary(Lt|Le|Gt|Ge, e1, e2) => (typeof(env, e1), typeof(env, e2)) match { //typeinequality
           case (TNumber, TNumber) => TBool
@@ -184,13 +185,19 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       case Call(e1, args) => typeof(env, e1) match {
         case TFunction(params, tret) if (params.length == args.length) =>
           (params zip args).foreach {
-          ???
+            case ((_, MTyp(_, t)), arg) => if (t != typeof(env, arg)) err(typeof(env, arg), e1)
           };
           tret
         case tgot => err(tgot, e1)
       }
-      case Obj(fields) => ???
-      case GetField(e1, f) => ???
+      case Obj(fields) => TObj(fields mapValues( {ei => typeof(env, ei)})) //get a map from the keys in fields to the type
+      case GetField(e1, f) => typeof(env, e1) match {
+        case TObj(tfields) => tfields.get(f) match { //if e1 is an object, get that specific f field
+          case Some(value) => value
+          case None => err(TObj(tfields), e1)
+        }
+        case tgot => err(tgot, e1) // if not an object
+      }
     }
   }
   
@@ -211,13 +218,29 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
     require(isValue(v2), s"inequalityVal: v2 ${v2} is not a value")
     require(bop == Lt || bop == Le || bop == Gt || bop == Ge)
     (v1, v2) match {
-      case _ => ??? // delete this line when done
+      case (S(str1), S(str2)) => bop match {
+        case Lt => str1 < str2
+        case Le => str1 <= str2
+        case Gt => str1 > str2
+        case Ge => str1 >= str2
+      }
+      case (N(n1), N(n2)) =>
+        bop match {
+          case Lt => n1 < n2
+          case Le => n1 <= n2
+          case Gt => n1 > n2
+          case Ge => n1 >= n2
+        }
     }
   }
 
   /* This should be the same code as from Lab 3 */
   def iterate(e0: Expr)(next: (Expr, Int) => Option[Expr]): Expr = {
-    def loop(e: Expr, n: Int): Expr = ???
+    // repeatedly calls next until it returns None
+    def loop(e: Expr, n: Int): Expr = next(e,n) match {
+      case None => e
+      case Some(e1) => loop(e1, n+1)
+    }
     loop(e0, 0)
   }
 
@@ -231,20 +254,20 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       case Binary(bop, e1, e2) => Binary(bop, substitute(e1, esub, x), substitute(e2, esub, x))
       case If(e1, e2, e3) => If(substitute(e1, esub, x), substitute(e2, esub, x), substitute(e3, esub, x))
       case Var(y) => if (x == y) esub else Var(y)
-      case Decl(mode, y, e1, e2) => {if (x == y) e else Decl(mode, y, substitute(e1, esub, x), substitute(e2, esub, x))
+      case Decl(mode, y, e1, e2) => {if (x == y) Decl(mode, y, substitute(e1,esub,x), e2) else Decl(mode, y, substitute(e1, esub, x), substitute(e2, esub, x))
     }
         /***** Cases needing adapting from Lab 3 */
       case Function(p, params, tann, e1) =>
         ???
-      case Call(e1, args) => ???
+      case Call(e1, args) => Call(substitute(e1, esub, x), args map {ei => substitute(ei,esub,x)})
         /***** New cases for Lab 4 */
-      case Obj(fields) => Obj(fields.map({case  (str, ex) =>  (str, substitute(ex, esub, x))})) //"fields" is a map of strings to exprs, so sub in expressions?
+      case Obj(fields) => Obj(fields mapValues({ ex => substitute(ex, esub, x)}) ) //"fields" is a map of strings to exprs, mapvalues takes those exprs and subs them
       case GetField(e1, f) => GetField(substitute(e1, esub,x), f)
     }
 
     val fvs = freeVars(esub) // this is the set of free variable names
     def fresh(x: String): String = if (fvs contains(x)) fresh(x + "$") else x
-    subst(e)
+    subst(rename(e)(fresh))
   }
 
   /* Rename bound variables in e */
@@ -258,11 +281,11 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         case Binary(bop, e1, e2) =>  Binary(bop, ren(env, e1), ren(env, e2))
         case If(e1, e2, e3) => If(ren(env, e1), ren(env, e2), ren(env, e3))
 
-        case Var(y) => ??? //if (env.contains(y)) env(Var(y)) else Var(y)
+        case Var(y) => if (env contains(y)) (Var(lookup(env, y))) else Var(y)
 
         case Decl(mode, y, e1, e2) => {
           val yp = fresh(y)
-          Decl(mode, yp, ren(env, e1), ren(env, e2))
+          Decl(mode, yp, ren(env, e1), ren(extend(env, y, yp), e2))
         }
         case Function(p, params, retty, e1) => {
           val (pp, envp): (Option[String], Map[String,String]) = p match {
@@ -272,19 +295,18 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
               (Some(pp), extend(env, x, pp)) //map the original name to the new name
             }
           }
-          val (paramsp, envpp) = params.foldRight( (Nil: List[(String,MTyp)], envp) ) {
-//            case ((paramname, paramtype), (params,env)) => {
-//              val pfresh = fresh(paramname)
-//              (pfresh, paramtype) :: (params, extend(env, paramname, pfresh))
-//            }
-            ???
+          val (paramsp, envpp) = params.foldRight( (Nil: List[(String,MTyp)], envp) ) { //fresh every param
+            case ((paramname, paramtype), (prevList, prevEnv)) => {
+              val pfresh = fresh(paramname)
+              ((pfresh, paramtype)::prevList, extend(prevEnv, paramname, pfresh))
+            }
           }
           Function(pp, paramsp, retty, ren(envpp, e1))
         }
 
-        case Call(e1, args) => ???
+        case Call(e1, args) => Call(ren(env,e1), args map {case (ei) => ren(env,ei)} )
 
-        case Obj(fields) => Obj(fields.map({case (str, ex) => (str, ren(env, ex))}))
+        case Obj(fields) => Obj(fields mapValues ({ ex => (ren(env, ex))}))
         case GetField(e1, f) => GetField(ren(env, e1), f)
       }
     }
@@ -293,7 +315,7 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
 
   /* Check whether or not an expression is reduced enough to be applied given a mode. */
   def isRedex(mode: Mode, e: Expr): Boolean = mode match {
-    case MConst => true //when the mode is constant then you have a redex
+    case MConst => if (!isValue(e)) true else false //when the mode is constant, and not a value then you have a redex.
     case MName => false
   }
 
@@ -303,8 +325,59 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       /* Base Cases: Do Rules */
       case Print(v1) if isValue(v1) => println(pretty(v1)); Undefined
         /***** Cases needing adapting from Lab 3. */
-      case Unary(Neg, v1) if isValue(v1) => ???
+      case Unary(Neg, v1) if isValue(v1) => v1 match { // do neg
+        case N(n1) => N(-n1)
+        case _ => throw StuckError(e) //theres no possibke next step
+      }
         /***** More cases here */
+      case Unary(Not, v1) if isValue(v1) => v1 match {
+        case B(b1) => B(!b1)
+        case _ => throw StuckError(e)
+      }
+      case Binary(Seq, v1, e2) if isValue(v1) => e2
+      case Binary(Plus, v1, v2) if isValue(v1) && isValue(v2) => (v1, v2) match {
+        case (N(n1), N(n2)) => N(n1 + n2)
+        case (S(str1), S(str2)) => S(str1 + str2)
+        case (_,_) => throw StuckError(e)
+      }
+      case Binary(Minus, n1, n2) if isValue(n1) && isValue(n2) => (n1, n2) match {
+        case (N(n1), N(n2)) => N(n1 - n2)
+        case (_,_) => throw StuckError(e)
+      }
+      case Binary(Times, n1, n2) if isValue(n1) && isValue(n2) => (n1, n2) match {
+        case (N(n1), N(n2)) => N(n1 * n2)
+        case (_,_) => throw StuckError(e)
+      }
+      case Binary(Div, n1, n2) if isValue(n1) && isValue(n2) => (n1, n2) match {
+        case (N(n1), N(n2)) => N(n1 / n2)
+        case (_,_) => throw StuckError(e)
+      }
+
+      case Binary(Eq, v1, v2) if isValue(v1) && isValue(v2) => B(v1 == v2)
+      case Binary(Ne, v1, v2) if isValue(v1) && isValue(v2) => B(v1 != v2)
+
+      case Binary(And, v1, e2) if isValue(v1) => v1 match {
+        case B(b) => if (b) e2 else B(false)
+        case _ => throw StuckError
+      }
+
+      case Binary(Or, v1, e2) if isValue(v1) => v1 match {
+        case B(b) => if (b) B(true) else B(false)
+        case _ => throw StuckError
+      }
+      case If(v1, e2, e3) if isValue(v1) => v1 match {
+        case B(b) => if (b) e2 else e3
+        case _ => throw StuckError
+      }
+      case Decl(mode, x, e1, e2) if !isRedex(mode, e1) => substitute(e2, e1, x) //doDecl
+
+        //inequality cases below, make sure these are at the end of the binary ops or other ops will match into this one
+      case Binary(bop, v1, v2) if isValue(v1) && isValue(v2) => (v1, v2) match {
+        case (N(n1), N(n2)) => B(inequalityVal(bop, N(n1), N(n2)))
+        case (S(str1), S(str2)) => B(inequalityVal(bop, S(str1), S(str2)))
+        case (_,_) => throw StuckError(e)
+      }
+
       case Call(v1, args) if isValue(v1) =>
         v1 match {
           case Function(p, params, _, e1) => {
