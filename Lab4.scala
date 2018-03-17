@@ -358,18 +358,26 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
 
       case Binary(And, v1, e2) if isValue(v1) => v1 match {
         case B(b) => if (b) e2 else B(false)
-        case _ => throw StuckError
+        case _ => throw StuckError(e)
       }
 
       case Binary(Or, v1, e2) if isValue(v1) => v1 match {
         case B(b) => if (b) B(true) else B(false)
-        case _ => throw StuckError
+        case _ => throw StuckError(e)
       }
       case If(v1, e2, e3) if isValue(v1) => v1 match {
         case B(b) => if (b) e2 else e3
-        case _ => throw StuckError
+        case _ => throw StuckError(e)
       }
       case Decl(mode, x, e1, e2) if !isRedex(mode, e1) => substitute(e2, e1, x) //doDecl
+
+      case GetField(v1 ,f) if isValue(v1) => v1 match {
+        case Obj(fields) => fields.get(f) match { //in the fields get the specific f field
+          case None => throw StuckError(e)
+          case Some(v) => v
+        }
+        case _ => throw StuckError(e)
+      }
 
         //inequality cases below, make sure these are at the end of the binary ops or other ops will match into this one
       case Binary(bop, v1, v2) if isValue(v1) && isValue(v2) => (v1, v2) match {
@@ -405,12 +413,25 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
       /* Inductive Cases: Search Rules */
       case Print(e1) => Print(step(e1))
         /***** Cases from Lab 3. */
-      case Unary(uop, e1) => ???
+      case Unary(uop, e1) => Unary(uop, step(e1))
+      case Binary(bop, e1, e2) if !isValue(e1) => Binary(bop, step(e1) ,e2) //search binary1
+      case Binary(bop, v1, e2) if isValue(v1) => Binary(bop, v1, step(e2)) //searchbinary2
+      case If(e1, e2, e3) => If(step(e1) , e2, e3)
+      case Decl(mode, x, e1, e2) if isRedex(mode, e1) => Decl(mode, x, step(e1), e2)
+
         /***** More cases here */
         /***** Cases needing adapting from Lab 3 */
-      case Call(v1 @ Function(_, _, _, _), args) => ???
-      case Call(e1, args) => ???
+      case Call(v1 @ Function(_, _, _, _), args) => ??? //searchcall2
+      case Call(e1, args) => Call(step(e1), args) //searchcall1
         /***** New cases for Lab 4. */
+        //searchobject
+
+
+        //searchgetfield
+      case GetField(e1, f) => e1 match {
+        case Obj(_) => GetField(step(e1), f)
+        case _=> throw StuckError(e)
+      }
 
       /* Everything else is a stuck error. Should not happen if e is well-typed.
        *
