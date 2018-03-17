@@ -238,13 +238,13 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         ???
       case Call(e1, args) => ???
         /***** New cases for Lab 4 */
-      case Obj(fields) => ???
-      case GetField(e1, f) => ???
+      case Obj(fields) => Obj(fields.map({case  (str, ex) =>  (str, substitute(ex, esub, x))})) //"fields" is a map of strings to exprs, so sub in expressions?
+      case GetField(e1, f) => GetField(substitute(e1, esub,x), f)
     }
 
-    val fvs = freeVars(???)
-    def fresh(x: String): String = if (???) fresh(x + "$") else x
-    subst(???)
+    val fvs = freeVars(esub) // this is the set of free variable names
+    def fresh(x: String): String = if (fvs contains(x)) fresh(x + "$") else x
+    subst(e)
   }
 
   /* Rename bound variables in e */
@@ -254,31 +254,38 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
         case N(_) | B(_) | Undefined | S(_) => e
         case Print(e1) => Print(ren(env, e1))
 
-        case Unary(uop, e1) => ???
-        case Binary(bop, e1, e2) => ???
-        case If(e1, e2, e3) => ???
+        case Unary(uop, e1) => Unary(uop, ren(env, e1))
+        case Binary(bop, e1, e2) =>  Binary(bop, ren(env, e1), ren(env, e2))
+        case If(e1, e2, e3) => If(ren(env, e1), ren(env, e2), ren(env, e3))
 
-        case Var(y) =>
-          ???
-        case Decl(mode, y, e1, e2) =>
+        case Var(y) => ??? //if (env.contains(y)) env(Var(y)) else Var(y)
+
+        case Decl(mode, y, e1, e2) => {
           val yp = fresh(y)
-          ???
-
+          Decl(mode, yp, ren(env, e1), ren(env, e2))
+        }
         case Function(p, params, retty, e1) => {
           val (pp, envp): (Option[String], Map[String,String]) = p match {
-            case None => ???
-            case Some(x) => ???
+            case None => (None, env) //don't need to do renaming so dont change env
+            case Some(x) => {
+              val pp = fresh(x) //if we need to rename
+              (Some(pp), extend(env, x, pp)) //map the original name to the new name
+            }
           }
           val (paramsp, envpp) = params.foldRight( (Nil: List[(String,MTyp)], envp) ) {
+//            case ((paramname, paramtype), (params,env)) => {
+//              val pfresh = fresh(paramname)
+//              (pfresh, paramtype) :: (params, extend(env, paramname, pfresh))
+//            }
             ???
           }
-          ???
+          Function(pp, paramsp, retty, ren(envpp, e1))
         }
 
         case Call(e1, args) => ???
 
-        case Obj(fields) => ???
-        case GetField(e1, f) => ???
+        case Obj(fields) => Obj(fields.map({case (str, ex) => (str, ren(env, ex))}))
+        case GetField(e1, f) => GetField(ren(env, e1), f)
       }
     }
     ren(empty, e)
@@ -286,8 +293,8 @@ object Lab4 extends jsy.util.JsyApplication with Lab4Like {
 
   /* Check whether or not an expression is reduced enough to be applied given a mode. */
   def isRedex(mode: Mode, e: Expr): Boolean = mode match {
-    case MConst => ???
-    case MName => ???
+    case MConst => true //when the mode is constant then you have a redex
+    case MName => false
   }
 
   def step(e: Expr): Expr = {
